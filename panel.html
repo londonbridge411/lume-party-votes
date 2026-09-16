@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Party votes</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="lume-client.js"></script>
+    <script src="votes.js"></script>
+  </head>
+  <body>
+    <section id="current" hidden></section>
+
+    <form id="start" autocomplete="off">
+      <h4>Start a vote</h4>
+      <div class="field">
+        <input type="text" id="question" maxlength="200" placeholder="Question" />
+      </div>
+      <div id="options"></div>
+      <div class="form-row">
+        <button type="button" id="add-option">Add option</button>
+        <label class="toggle" title="The result shows counts only">
+          <input type="checkbox" id="anonymous" />
+          Hide names
+        </label>
+      </div>
+      <p class="note" id="open-note" hidden>A vote is open. Start another once it ends.</p>
+      <p class="error" id="form-error" hidden></p>
+      <div class="actions">
+        <button type="submit" class="primary" id="start-button">Start vote</button>
+      </div>
+    </form>
+
+    <script>
+      // The panel holds no state: it asks the main frame for it, sends the
+      // user's actions there, and redraws when the main frame says it changed.
+      ;(async () => {
+        const V = window.PartyVotes
+        const $ = (id) => document.getElementById(id)
+
+        function el(tag, props, children) {
+          const node = document.createElement(tag)
+          for (const [key, value] of Object.entries(props || {})) {
+            if (key === 'text') node.textContent = value
+            else if (key === 'onClick') node.addEventListener('click', value)
+            else if (value === true) node.setAttribute(key, '')
+            else if (value !== false && value != null) node.setAttribute(key, value)
+          }
+          for (const child of children || []) if (child) node.appendChild(child)
+          return node
+        }
+
+        const host = await LumeClient.connect()
+        const toMain = (name, args) => host.call('rpc.call', { name, args: args || {}, target: 'local' })
+
+        let state = null
+        let actionError = ''
+
+        // --- the current vote -------------------------------------------------
+
+        function renderOpen(vote, me, roster) {
+          const myPick = vote.ballots[me.playerId] ? vote.ballots[me.playerId].option : null
+          const voted = new Set(Object.keys(vote.ballots))
+          const present = new Set([...roster.map((p) => p.playerId), ...voted])
+          const waiting = roster.filter((p) => !voted.has(p.playerId)).map((p) => p.name)
+          const manages = vote.starter.playerId === me.playerId || me.role === 'dm'
+
+          return [
+            el('h4', { text: 'Open vote' }),
+            el('p', { class: 'question', text: vote.question }),
+            el('p', {
+              class: 'meta',
+              text: `Started by ${vote.starter.name}, names ${vote.anonymous ? 'hidden' : 'shown'}`,
+            }),
+            el(
+              'div',
+              { class: 'choices' },
+              vote.options.map((label, option) =>
+                el('button', {
+                  type: 'button',
+                  class: 'choice' + (myPick === option ? ' picked' : ''),
+                  'aria-pressed': myPick === option ? 'true' : 'false',
+                  text: label,
+                  onClick: () => act('cast', { option }),
+                }),
+              ),
+            ),
+            el('p', { class: 'meta', text: `${voted.size} of ${present.size} voted` }),
+            manages && !vote.anonymous && waiting.length > 0
+              ? el('p', { class: 'meta', text: `Waiting on ${waiting.join(', ')}` })
+              : null,
+            actionError ? el('p', { class: 'error', text: actionError }) : null,
+            manages
+              ? el('div', { class: 'actions' }, [
+                  el('button', { type: 'button', text: 'End vote', onClick: () => act('end') }),
+                ])
+              : null,
+          ]
+        }
+
+        function renderResult(vote) {
+          const rows = V.tally(vote)
+          const total = Object.keys(vote.ballots).length
+          const top = Math.max(0, ...rows.map((r) => r.count))
+          const ender = vote.endedBy && vote.endedBy.playerId !== vote.starter.playerId ? `, ended by ${vote.endedBy.name}` : ''
+
+          return [
+            el('h4', { text: 'Result' }),
+            el('p', { class: 'question', text: vote.question }),
+            el('p', {
+              class: 'meta',
+              text: `Started by ${vote.starter.name}${ender}. ${total} ${total === 1 ? 'vote' : 'votes'}`,
+            }),
+            el(
+              'div',
+              { class: 'results' },
+              rows.map((row) =>
+                el('div', { class: 'result' + (top > 0 && row.count === top ? ' top' : '') }, [
+                  el('div', { class: 'result-head' }, [
+                    el('span', { class: 'result-label', text: row.label }),
+                    el('span', { class: 'result-count', text: String(row.count) }),
+                  ]),
+                  el('div', { class: 'bar' }, [
+                    el('span', { style: `width: ${total > 0 ? Math.round((row.count / total) * 100) : 0}%` }),
+                  ]),
+                  row.names.length > 0 ? el('div', { class: 'names', text: row.names.join(', ') }) : null,
+                ]),
+              ),
+            ),
+          ]
+        }
+
+        function render() {
+          const current = $('current')
+          const vote = state && state.vote
+          current.replaceChildren(
+            ...(vote ? (vote.status === 'open' ? renderOpen(vote, state.me, state.roster) : renderResult(vote)) : []),
+          )
+          current.hidden = !vote
+          const open = !!vote && vote.status === 'open'
+          $('open-note').hidden = !open
+          $('start-button').disabled = open || !state
+        }
+
+        async function act(name, args) {
+          try {
+            await toMain(name, args)
+            actionError = ''
+          } catch (err) {
+            actionError = err.message || 'That didn\'t work.'
+          }
+          render()
+        }
+
+        // --- the start form ---------------------------------------------------
+
+        const closeIcon =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+
+        function optionRows() {
+          return Array.from($('options').querySelectorAll('input'))
+        }
+
+        function syncOptionButtons() {
+          const rows = $('options').children
+          for (const row of rows) row.querySelector('button').hidden = rows.length <= V.LIMITS.minOptions
+          $('add-option').disabled = rows.length >= V.LIMITS.maxOptions
+        }
+
+        function addOption(focus) {
+          const input = el('input', {
+            type: 'text',
+            maxlength: String(V.LIMITS.option),
+            placeholder: `Option ${$('options').children.length + 1}`,
+          })
+          const remove = el('button', { type: 'button', class: 'icon-button', title: 'Remove option', 'aria-label': 'Remove option' })
+          remove.innerHTML = closeIcon
+          const row = el('div', { class: 'option-row' }, [input, remove])
+          remove.addEventListener('click', () => {
+            row.remove()
+            optionRows().forEach((field, i) => (field.placeholder = `Option ${i + 1}`))
+            syncOptionButtons()
+          })
+          $('options').appendChild(row)
+          syncOptionButtons()
+          if (focus) input.focus()
+        }
+
+        function resetForm() {
+          $('question').value = ''
+          $('options').replaceChildren()
+          for (let i = 0; i < V.LIMITS.minOptions; i++) addOption(false)
+        }
+
+        function showFormError(text) {
+          $('form-error').textContent = text
+          $('form-error').hidden = !text
+        }
+
+        $('add-option').addEventListener('click', () => addOption(true))
+
+        $('anonymous').addEventListener('change', () => {
+          host.call('local.set', { key: 'anonymous', value: $('anonymous').checked }).catch(() => {})
+        })
+
+        $('start').addEventListener('submit', async (event) => {
+          event.preventDefault()
+          const input = {
+            question: $('question').value,
+            options: optionRows().map((field) => field.value),
+            anonymous: $('anonymous').checked,
+          }
+          // checked here too, so a mistake shows before anything is sent
+          const problem = V.createVote(input, { playerId: 'me', name: 'me' }, 0)
+          if (typeof problem === 'string') return showFormError(problem)
+          $('start-button').disabled = true
+          try {
+            await toMain('start', input)
+            showFormError('')
+            resetForm()
+          } catch (err) {
+            showFormError(err.message || 'The vote didn\'t start.')
+          }
+          render()
+        })
+
+        resetForm()
+        render()
+        $('anonymous').checked = (await host.call('local.get', { key: 'anonymous' }).catch(() => null)) === true
+
+        // --- connect to the main frame ----------------------------------------
+
+        await host.register('stateChanged', (next, ctx) => {
+          if (ctx.target !== 'local') return null
+          // a new vote clears an error left over from the last one
+          if (!state || !state.vote || !next.vote || state.vote.id !== next.vote.id) actionError = ''
+          state = next
+          render()
+          return null
+        })
+
+        // the main frame registers its handlers just after connecting
+        for (let attempt = 0; attempt < 20; attempt++) {
+          try {
+            state = await toMain('getState')
+            break
+          } catch (err) {
+            if (err.code !== 'not_found') break
+            await new Promise((resolve) => setTimeout(resolve, 250))
+          }
+        }
+        render()
+      })()
+    </script>
+  </body>
+</html>

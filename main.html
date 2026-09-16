@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Party votes (main)</title>
+    <script src="lume-client.js"></script>
+    <script src="votes.js"></script>
+  </head>
+  <body>
+    <script>
+      // The main frame, on every device in the session: holds the current vote
+      // and the roster, talks to the other devices, raises toasts, and answers
+      // the panel. It runs whether or not the panel is open.
+      ;(async () => {
+        const V = window.PartyVotes
+        const host = await LumeClient.connect()
+
+        const device = V.randomId()
+        let me = { ...host.info.user }
+        // votes carry names, and a vote with a name out of bounds is dropped
+        const myName = () => (String(me.displayName || '').trim() || 'Someone').slice(0, V.LIMITS.name)
+        let vote = null
+        let roster = V.rosterAdd({}, me.playerId, myName(), device)
+        let gotState = false
+
+        const net = (name, args, target) => host.call('rpc.call', { name, args, target: target || 'all' })
+        const toast = (text, tone) => host.call('ui.notify', { text: text.slice(0, 280), tone: tone || 'info' }).catch(() => {})
+        const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v)
+        const nameOf = (args) => (isObject(args) && typeof args.name === 'string' ? args.name.trim().slice(0, V.LIMITS.name) : '')
+
+        function snapshot() {
+          const people = Object.entries(roster)
+            .map(([playerId, entry]) => ({ playerId, name: entry.name }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+          return { me: { playerId: me.playerId, name: myName(), role: me.role }, vote, roster: people }
+        }
+
+        // the panel may be closed: then nobody registered stateChanged
+        function changed() {
+          host.call('rpc.call', { name: 'stateChanged', args: snapshot(), target: 'local' }).catch(() => {})
+        }
+
+        /** handlers the panel calls; a network call with the same name is ignored */
+        const local = (name, handler) =>
+          host.register(name, (args, ctx) => {
+            if (ctx.target !== 'local') return null
+            return handler(isObject(args) ? args : {})
+          })
+
+        // --- from the panel ---------------------------------------------------
+
+        await local('getState', () => snapshot())
+
+        await local('start', async (args) => {
+          if (vote && vote.status === 'open') throw new Error('A vote is already open.')
+          const created = V.createVote(args, { playerId: me.playerId, name: myName() }, Date.now())
+          if (typeof created === 'string') throw new Error(created)
+          await net('voteStarted', { vote: created })
+          return null
+        })
+
+        await local('cast', async (args) => {
+          if (!vote || vote.status !== 'open') throw new Error('No vote is open.')
+          if (!Number.isInteger(args.option) || args.option < 0 || args.option >= vote.options.length) {
+            throw new Error('Pick one of the options.')
+          }
+          await net('ballot', { voteId: vote.id, name: myName(), option: args.option, at: Date.now() })
+          return null
+        })
+
+        await local('end', async () => {
+          if (!V.canEnd(vote, me.playerId, me.role)) throw new Error('Only the starter or the DM can end this vote.')
+          const ended = { ...vote, status: 'ended', endedBy: { playerId: me.playerId, name: myName() } }
+          await net('voteEnded', { vote: ended })
+          return null
+        })
+
+        // --- from every device, this one included ---------------------------
+
+        await host.register('voteStarted', (args, ctx) => {
+          const incoming = V.parseVote(isObject(args) ? args.vote : null)
+          if (!incoming || incoming.status !== 'open' || incoming.starter.playerId !== ctx.from.playerId) return
+          const prev = vote
+          vote = V.merge(prev, incoming)
+          const adopted = vote.id === incoming.id && (!prev || prev.id !== incoming.id)
+          if (adopted && incoming.starter.playerId !== me.playerId) {
+            toast(`${incoming.starter.name} started a vote. Pick in Party votes.`)
+          }
+          // two starts at once: ours lost to the one that started first
+          if (prev && prev.status === 'open' && vote.id !== prev.id && prev.starter.playerId === me.playerId) {
+            toast(`${vote.starter.name} started a vote first.`, 'warning')
+          }
+          changed()
+        })
+
+        await host.register('ballot', (args, ctx) => {
+          const next = V.applyBallot(vote, ctx.from.playerId, args)
+          if (next === vote) return
+          vote = next
+          changed()
+        })
+
+        await host.register('voteEnded', (args, ctx) => {
+          const incoming = V.parseVote(isObject(args) ? args.vote : null)
+          if (!incoming || incoming.status !== 'ended') return
+          const known = vote && vote.id === incoming.id ? vote : incoming
+          if (known.starter.playerId !== ctx.from.playerId && ctx.from.role !== 'dm') return
+          incoming.endedBy = { playerId: ctx.from.playerId, name: incoming.endedBy.name }
+          const wasEnded = !!vote && vote.id === incoming.id && vote.status === 'ended'
+          vote = V.merge(vote, incoming)
+          if (!wasEnded && vote.id === incoming.id && vote.status === 'ended' && !ctx.from.thisClient) {
+            toast('The vote ended. Results are in Party votes.')
+          }
+          changed()
+        })
+
+        // a device that just loaded: add it, and hand it what this one knows
+        await host.register('hello', (args, ctx) => {
+          if (ctx.from.thisClient) return
+          const name = nameOf(args)
+          const from = isObject(args) && typeof args.device === 'string' ? args.device.slice(0, 64) : ''
+          if (!name || !from) return
+          roster = V.rosterAdd(roster, ctx.from.playerId, name, from)
+          changed()
+          net('state', { vote, roster }, { user: ctx.from.playerId }).catch(() => {})
+        })
+
+        await host.register('state', (args) => {
+          if (!isObject(args)) return
+          const theirVote = args.vote === null ? null : V.parseVote(args.vote)
+          const theirRoster = V.parseRoster(args.roster)
+          if ((args.vote !== null && !theirVote) || !theirRoster) return
+          gotState = true
+          vote = V.merge(vote, theirVote)
+          roster = V.rosterMerge(roster, theirRoster)
+          changed()
+        })
+
+        await host.register('bye', (args, ctx) => {
+          if (ctx.from.thisClient || !isObject(args) || typeof args.device !== 'string') return
+          roster = V.rosterRemove(roster, ctx.from.playerId, args.device)
+          changed()
+        })
+
+        // --- lifecycle --------------------------------------------------------
+
+        await host.onLifecycle('contextChange', (info) => {
+          me = { ...info.user }
+          roster = V.rosterAdd(roster, me.playerId, myName(), device)
+          changed()
+        })
+
+        await host.onLifecycle('unload', () => {
+          net('bye', { device }).catch(() => {})
+        })
+
+        // Answers can arrive before this device has joined the broadcast and be
+        // missed, so say hello again until someone answers. Alone in the
+        // session, nobody ever does.
+        for (let attempt = 0; attempt < 3 && !gotState; attempt++) {
+          net('hello', { name: myName(), device }).catch(() => {})
+          await new Promise((resolve) => setTimeout(resolve, 2500))
+        }
+      })()
+    </script>
+  </body>
+</html>
