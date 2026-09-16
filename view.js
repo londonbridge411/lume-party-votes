@@ -13,19 +13,25 @@
     return node
   }
 
+  /** player id -> display name, from the main frame's state */
+  function namer(state) {
+    const names = new Map(((state && state.members) || []).map((m) => [m.playerId, m.displayName]))
+    return (playerId) => names.get(playerId) || 'Someone'
+  }
+
   /** an ended vote: each option with its count and, for a named vote, who picked it */
-  function renderResult(vote) {
+  function renderResult(vote, nameOf) {
     const rows = window.PartyVotes.tally(vote)
     const total = Object.keys(vote.ballots).length
     const top = Math.max(0, ...rows.map((r) => r.count))
-    const ender = vote.endedBy && vote.endedBy.playerId !== vote.starter.playerId ? `, ended by ${vote.endedBy.name}` : ''
+    const ender = vote.endedBy && vote.endedBy !== vote.starter ? `, ended by ${nameOf(vote.endedBy)}` : ''
 
     return [
       el('h4', { text: 'Result' }),
       el('p', { class: 'question', text: vote.question }),
       el('p', {
         class: 'meta',
-        text: `Started by ${vote.starter.name}${ender}. ${total} ${total === 1 ? 'vote' : 'votes'}`,
+        text: `Started by ${nameOf(vote.starter)}${ender}. ${total} ${total === 1 ? 'vote' : 'votes'}`,
       }),
       el(
         'div',
@@ -39,12 +45,14 @@
             el('div', { class: 'bar' }, [
               el('span', { style: `width: ${total > 0 ? Math.round((row.count / total) * 100) : 0}%` }),
             ]),
-            row.names.length > 0 ? el('div', { class: 'names', text: row.names.join(', ') }) : null,
+            row.voters.length > 0
+              ? el('div', { class: 'names', text: row.voters.map(nameOf).sort((a, b) => a.localeCompare(b)).join(', ') })
+              : null,
           ]),
         ),
       ),
     ]
   }
 
-  window.PartyVotesView = { el, renderResult }
+  window.PartyVotesView = { el, namer, renderResult }
 })()

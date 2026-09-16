@@ -26,7 +26,7 @@ Until Lume's plugin browser exists, a campaign's DM installs it with a
 |---|---|
 | `plugin_id` | `lume.party-votes` |
 | `manifest_url` | `https://londonbridge411.github.io/lume-party-votes/manifest.json` |
-| `granted` | `["ui:panel", "rpc"]` |
+| `granted` | `["ui:panel", "rpc", "campaign:read", "session:read"]` |
 
 ## Trust
 
@@ -34,6 +34,8 @@ Votes travel as open broadcasts between the devices in the session. A
 modified client could cast a ballot for someone else, end a vote while
 claiming to be the DM, or read who picked what. That's fine for a table vote,
 but "Hide names" only hides names in the panel. It isn't a secret ballot.
+Names always come from Lume's member list, never from a message, so no one
+can put a false name on a vote.
 
 ## Files
 

@@ -36,7 +36,7 @@
       // user's actions there, and redraws when the main frame says it changed.
       ;(async () => {
         const V = window.PartyVotes
-        const { el, renderResult } = window.PartyVotesView
+        const { el, namer, renderResult } = window.PartyVotesView
         const $ = (id) => document.getElementById(id)
 
         const host = await LumeClient.connect()
@@ -47,19 +47,21 @@
 
         // --- the current vote -------------------------------------------------
 
-        function renderOpen(vote, me, roster) {
+        function renderOpen(vote, state, nameOf) {
+          const me = state.me
           const myPick = vote.ballots[me.playerId] ? vote.ballots[me.playerId].option : null
           const voted = new Set(Object.keys(vote.ballots))
-          const present = new Set([...roster.map((p) => p.playerId), ...voted])
-          const waiting = roster.filter((p) => !voted.has(p.playerId)).map((p) => p.name)
-          const manages = vote.starter.playerId === me.playerId || me.role === 'dm'
+          // who's here, plus anyone who voted and has since left
+          const counted = new Set([...state.present.map((p) => p.playerId), ...voted])
+          const waiting = state.present.filter((p) => !voted.has(p.playerId)).map((p) => p.displayName)
+          const manages = vote.starter === me.playerId || me.role === 'dm'
 
           return [
             el('h4', { text: 'Open vote' }),
             el('p', { class: 'question', text: vote.question }),
             el('p', {
               class: 'meta',
-              text: `Started by ${vote.starter.name}, names ${vote.anonymous ? 'hidden' : 'shown'}`,
+              text: `Started by ${nameOf(vote.starter)}, names ${vote.anonymous ? 'hidden' : 'shown'}`,
             }),
             el(
               'div',
@@ -74,7 +76,7 @@
                 }),
               ),
             ),
-            el('p', { class: 'meta', text: `${voted.size} of ${present.size} voted` }),
+            el('p', { class: 'meta', text: `${voted.size} of ${counted.size} voted` }),
             manages && !vote.anonymous && waiting.length > 0
               ? el('p', { class: 'meta', text: `Waiting on ${waiting.join(', ')}` })
               : null,
@@ -90,8 +92,9 @@
         function render() {
           const current = $('current')
           const vote = state && state.vote
+          const nameOf = namer(state)
           current.replaceChildren(
-            ...(vote ? (vote.status === 'open' ? renderOpen(vote, state.me, state.roster) : renderResult(vote)) : []),
+            ...(vote ? (vote.status === 'open' ? renderOpen(vote, state, nameOf) : renderResult(vote, nameOf)) : []),
           )
           current.hidden = !vote
           const open = !!vote && vote.status === 'open'
@@ -168,7 +171,7 @@
             anonymous: $('anonymous').checked,
           }
           // checked here too, so a mistake shows before anything is sent
-          const problem = V.createVote(input, { playerId: 'me', name: 'me' }, 0)
+          const problem = V.createVote(input, 'me', 0)
           if (typeof problem === 'string') return showFormError(problem)
           $('start-button').disabled = true
           try {

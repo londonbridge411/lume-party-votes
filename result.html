@@ -26,13 +26,13 @@
       // The result popup: the ended vote, as the panel shows it. The main frame
       // opens it when a vote ends and closes it when the next one starts.
       ;(async () => {
-        const { renderResult } = window.PartyVotesView
+        const { namer, renderResult } = window.PartyVotesView
         const content = document.getElementById('content')
         const host = await LumeClient.connect()
 
         function render(state) {
           const vote = state && state.vote
-          if (vote && vote.status === 'ended') content.replaceChildren(...renderResult(vote))
+          if (vote && vote.status === 'ended') content.replaceChildren(...renderResult(vote, namer(state)))
         }
 
         // the card fits what's in it, up to Lume's limit; past that it scrolls

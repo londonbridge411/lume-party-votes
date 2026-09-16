@@ -1,12 +1,12 @@
 {
   "id": "lume.party-votes",
   "name": "Party votes",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "apiVersion": 1,
   "kind": "campaign",
   "description": "Ask the table a question and see what everyone picks.",
   "main": "main.html",
-  "permissions": ["ui:panel", "rpc"],
+  "permissions": ["ui:panel", "rpc", "campaign:read", "session:read"],
   "contributes": {
     "panels": [
       {

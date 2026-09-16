@@ -6,6 +6,7 @@
     <link rel="stylesheet" href="panel.css" />
     <script src="lume-client.js"></script>
     <script src="votes.js"></script>
+    <script src="view.js"></script>
     <style>
       body {
         padding: 0;
@@ -63,7 +64,7 @@
           })
           content.replaceChildren(
             el('p', { class: 'question' }, vote.question),
-            el('p', { class: 'meta' }, `Asked by ${vote.starter.name}`),
+            el('p', { class: 'meta' }, `Asked by ${window.PartyVotesView.namer(state)(vote.starter)}`),
             choices,
             ...(error ? [el('p', { class: 'error' }, error)] : []),
           )
