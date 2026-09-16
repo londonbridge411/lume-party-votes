@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Result</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="lume-client.js"></script>
+    <script src="votes.js"></script>
+    <script src="view.js"></script>
+    <style>
+      body {
+        padding: 0;
+      }
+      #content {
+        padding: 10px 12px 12px;
+      }
+      #content h4 {
+        margin-top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="content"></div>
+
+    <script>
+      // The result popup: the ended vote, as the panel shows it. The main frame
+      // opens it when a vote ends and closes it when the next one starts.
+      ;(async () => {
+        const { renderResult } = window.PartyVotesView
+        const content = document.getElementById('content')
+        const host = await LumeClient.connect()
+
+        function render(state) {
+          const vote = state && state.vote
+          if (vote && vote.status === 'ended') content.replaceChildren(...renderResult(vote))
+        }
+
+        // the card fits what's in it, up to Lume's limit; past that it scrolls
+        new ResizeObserver(() => {
+          host.call('ui.resizePopup', { height: Math.ceil(content.getBoundingClientRect().height) }).catch(() => {})
+        }).observe(content)
+
+        await host.register('resultStateChanged', (next, ctx) => {
+          if (ctx.target !== 'local') return null
+          render(next)
+          return null
+        })
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+          try {
+            render(await host.call('rpc.call', { name: 'getState', args: {}, target: 'local' }))
+            break
+          } catch (err) {
+            if (err.code !== 'not_found') break
+            await new Promise((resolve) => setTimeout(resolve, 250))
+          }
+        }
+      })()
+    </script>
+  </body>
+</html>

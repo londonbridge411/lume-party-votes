@@ -42,27 +42,44 @@
           const state = snapshot()
           host.call('rpc.call', { name: 'stateChanged', args: state, target: 'local' }).catch(() => {})
           host.call('rpc.call', { name: 'popupStateChanged', args: state, target: 'local' }).catch(() => {})
-          syncPopup()
+          host.call('rpc.call', { name: 'resultStateChanged', args: state, target: 'local' }).catch(() => {})
+          syncPopups()
         }
 
-        // The popup asks this user to pick: it opens once per vote, for a vote
-        // someone else started that this user hasn't picked in yet, and closes
-        // when they pick (on any of their devices) or the vote ends. Closed by
-        // hand, it stays closed for that vote.
-        let popupFor = null
-        function syncPopup() {
-          const wanted =
-            !!vote && vote.status === 'open' && vote.starter.playerId !== me.playerId && !vote.ballots[me.playerId]
-          if (wanted && popupFor !== vote.id) {
-            popupFor = vote.id
-            const question = vote.question
-            const starter = vote.starter.name
-            host.call('ui.openPopup', { id: 'vote' }).catch(() => {
-              // a Lume without popups: fall back to a toast
-              toast(`${starter} started a vote: ${question}`)
+        const openPopup = (id) => host.call('ui.openPopup', { id })
+        const closePopup = (id) => host.call('ui.closePopup', { id }).catch(() => {})
+
+        // Two popups, one at a time. The vote popup asks this user to pick: it
+        // opens once per vote, for a vote someone else started that this user
+        // hasn't picked in yet, and closes when they pick (on any of their
+        // devices) or the vote ends. The result popup opens once when this
+        // device sees a vote end, for everyone, and closes when the next vote
+        // starts. Closed by hand, either stays closed for that vote. On a Lume
+        // without popups, opening fails and a toast says the same thing.
+        let votePopupFor = null
+        let resultPopupFor = null
+        /** the vote this device saw end, not one it learned of already ended */
+        let sawEnd = null
+        function syncPopups() {
+          if (vote && vote.status === 'open') {
+            closePopup('result')
+            const wanted = vote.starter.playerId !== me.playerId && !vote.ballots[me.playerId]
+            if (wanted && votePopupFor !== vote.id) {
+              votePopupFor = vote.id
+              const text = `${vote.starter.name} started a vote: ${vote.question}`
+              openPopup('vote').catch(() => toast(text))
+            } else if (!wanted) {
+              closePopup('vote')
+            }
+            return
+          }
+          closePopup('vote')
+          if (vote && vote.id === sawEnd && resultPopupFor !== vote.id) {
+            resultPopupFor = vote.id
+            const endedHere = vote.endedBy && vote.endedBy.playerId === me.playerId
+            openPopup('result').catch(() => {
+              if (!endedHere) toast('The vote ended. Results are in Party votes.')
             })
-          } else if (!wanted) {
-            host.call('ui.closePopup', { id: 'vote' }).catch(() => {})
           }
         }
 
@@ -130,9 +147,7 @@
           incoming.endedBy = { playerId: ctx.from.playerId, name: incoming.endedBy.name }
           const wasEnded = !!vote && vote.id === incoming.id && vote.status === 'ended'
           vote = V.merge(vote, incoming)
-          if (!wasEnded && vote.id === incoming.id && vote.status === 'ended' && !ctx.from.thisClient) {
-            toast('The vote ended. Results are in Party votes.')
-          }
+          if (!wasEnded && vote.id === incoming.id && vote.status === 'ended') sawEnd = vote.id
           changed()
         })
 

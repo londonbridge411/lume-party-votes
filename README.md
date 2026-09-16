@@ -10,7 +10,8 @@ ends.
   and can change their pick in the Party votes panel until the vote ends.
 - Results stay hidden until the vote ends; while it's open, only the number
   of people who have voted shows.
-- The person who started a vote ends it, and the DM can end any vote.
+- The person who started a vote ends it, and the DM can end any vote. The
+  result pops up for everyone.
 
 Votes aren't stored anywhere. Each device in the session keeps a copy, and a
 device that loads asks the others for the current vote, so a vote survives
@@ -40,7 +41,9 @@ but "Hide names" only hides names in the panel. It isn't a secret ballot.
 |---|---|
 | `manifest.json` | Id, panel, permissions |
 | `main.html` | The main frame: holds the vote, talks to other devices, opens and closes the popup |
-| `popup.html` | The popup: the question and one button per option |
+| `popup.html` | The vote popup: the question and one button per option |
+| `result.html` | The result popup |
+| `view.js` | DOM helpers and the result view the panel and popups share |
 | `panel.html`, `panel.css` | The panel: start form, open vote, result |
 | `votes.js` | Vote state and the pure functions both frames use |
 | `lume-client.js` | Lume's protocol client, copied until the SDK is published |
