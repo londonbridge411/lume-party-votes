@@ -35,9 +35,35 @@
           return { me: { playerId: me.playerId, name: myName(), role: me.role }, vote, roster: people }
         }
 
-        // the panel may be closed: then nobody registered stateChanged
+        // the panel and the popup may be closed: then nobody registered these.
+        // Each has its own name, since a local call to a name two frames
+        // registered is ambiguous.
         function changed() {
-          host.call('rpc.call', { name: 'stateChanged', args: snapshot(), target: 'local' }).catch(() => {})
+          const state = snapshot()
+          host.call('rpc.call', { name: 'stateChanged', args: state, target: 'local' }).catch(() => {})
+          host.call('rpc.call', { name: 'popupStateChanged', args: state, target: 'local' }).catch(() => {})
+          syncPopup()
+        }
+
+        // The popup asks this user to pick: it opens once per vote, for a vote
+        // someone else started that this user hasn't picked in yet, and closes
+        // when they pick (on any of their devices) or the vote ends. Closed by
+        // hand, it stays closed for that vote.
+        let popupFor = null
+        function syncPopup() {
+          const wanted =
+            !!vote && vote.status === 'open' && vote.starter.playerId !== me.playerId && !vote.ballots[me.playerId]
+          if (wanted && popupFor !== vote.id) {
+            popupFor = vote.id
+            const question = vote.question
+            const starter = vote.starter.name
+            host.call('ui.openPopup', { id: 'vote' }).catch(() => {
+              // a Lume without popups: fall back to a toast
+              toast(`${starter} started a vote: ${question}`)
+            })
+          } else if (!wanted) {
+            host.call('ui.closePopup', { id: 'vote' }).catch(() => {})
+          }
         }
 
         /** handlers the panel calls; a network call with the same name is ignored */
@@ -82,10 +108,6 @@
           if (!incoming || incoming.status !== 'open' || incoming.starter.playerId !== ctx.from.playerId) return
           const prev = vote
           vote = V.merge(prev, incoming)
-          const adopted = vote.id === incoming.id && (!prev || prev.id !== incoming.id)
-          if (adopted && incoming.starter.playerId !== me.playerId) {
-            toast(`${incoming.starter.name} started a vote. Pick in Party votes.`)
-          }
           // two starts at once: ours lost to the one that started first
           if (prev && prev.status === 'open' && vote.id !== prev.id && prev.starter.playerId === me.playerId) {
             toast(`${vote.starter.name} started a vote first.`, 'warning')

@@ -1,7 +1,7 @@
 {
   "id": "lume.party-votes",
   "name": "Party votes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "apiVersion": 1,
   "kind": "campaign",
   "description": "Ask the table a question and see what everyone picks.",
@@ -17,6 +17,7 @@
         "title": "Party votes",
         "icon": "<svg viewBox=\"0 0 24 24\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 13h18v8H3z\"/><path d=\"M7 13V3h10v10\"/><path d=\"M9.5 8l2 2 3.5-4\"/><path d=\"M9 17h6\"/></svg>"
       }
-    ]
+    ],
+    "popups": [{ "id": "vote", "url": "popup.html", "title": "Vote" }]
   }
 }

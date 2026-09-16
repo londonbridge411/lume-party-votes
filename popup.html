@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Vote</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="lume-client.js"></script>
+    <script src="votes.js"></script>
+    <style>
+      body {
+        padding: 0;
+        overflow: hidden;
+      }
+      #content {
+        padding: 10px 12px 12px;
+      }
+      .choices {
+        margin-bottom: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="content"></div>
+
+    <script>
+      // The popup: the question and one button per option. Picking casts the
+      // vote through the main frame, which then closes the popup; changing a
+      // pick and ending the vote happen in the panel.
+      ;(async () => {
+        const content = document.getElementById('content')
+        const host = await LumeClient.connect()
+        const toMain = (name, args) => host.call('rpc.call', { name, args: args || {}, target: 'local' })
+
+        let state = null
+        let error = ''
+
+        function el(tag, props, text) {
+          const node = document.createElement(tag)
+          for (const [key, value] of Object.entries(props || {})) node.setAttribute(key, value)
+          if (text !== undefined) node.textContent = text
+          return node
+        }
+
+        function render() {
+          const vote = state && state.vote
+          if (!vote || vote.status !== 'open') {
+            content.replaceChildren()
+            return
+          }
+          const choices = el('div', { class: 'choices' })
+          vote.options.forEach((label, option) => {
+            const button = el('button', { type: 'button', class: 'choice' }, label)
+            button.addEventListener('click', async () => {
+              for (const b of choices.querySelectorAll('button')) b.disabled = true
+              try {
+                await toMain('cast', { option })
+              } catch (err) {
+                error = err.message || 'That didn\'t count.'
+                render()
+              }
+            })
+            choices.appendChild(button)
+          })
+          content.replaceChildren(
+            el('p', { class: 'question' }, vote.question),
+            el('p', { class: 'meta' }, `Asked by ${vote.starter.name}`),
+            choices,
+            ...(error ? [el('p', { class: 'error' }, error)] : []),
+          )
+        }
+
+        // the card fits what's in it
+        new ResizeObserver(() => {
+          host.call('ui.resizePopup', { height: Math.ceil(content.getBoundingClientRect().height) }).catch(() => {})
+        }).observe(content)
+
+        await host.register('popupStateChanged', (next, ctx) => {
+          if (ctx.target !== 'local') return null
+          state = next
+          render()
+          return null
+        })
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+          try {
+            state = await toMain('getState')
+            break
+          } catch (err) {
+            if (err.code !== 'not_found') break
+            await new Promise((resolve) => setTimeout(resolve, 250))
+          }
+        }
+        render()
+      })()
+    </script>
+  </body>
+</html>

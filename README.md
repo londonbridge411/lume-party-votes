@@ -6,8 +6,8 @@ ends.
 
 - Anyone starts a vote: a question and 2 to 6 options, with names shown or
   hidden.
-- One vote at a time. Everyone picks in the Party votes panel and can change
-  their pick until the vote ends.
+- One vote at a time. Everyone else gets a popup over the board to pick in,
+  and can change their pick in the Party votes panel until the vote ends.
 - Results stay hidden until the vote ends; while it's open, only the number
   of people who have voted shows.
 - The person who started a vote ends it, and the DM can end any vote.
@@ -39,7 +39,8 @@ but "Hide names" only hides names in the panel. It isn't a secret ballot.
 | File | What |
 |---|---|
 | `manifest.json` | Id, panel, permissions |
-| `main.html` | The main frame: holds the vote, talks to other devices, raises toasts |
+| `main.html` | The main frame: holds the vote, talks to other devices, opens and closes the popup |
+| `popup.html` | The popup: the question and one button per option |
 | `panel.html`, `panel.css` | The panel: start form, open vote, result |
 | `votes.js` | Vote state and the pure functions both frames use |
 | `lume-client.js` | Lume's protocol client, copied until the SDK is published |
