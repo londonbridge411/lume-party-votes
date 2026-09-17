@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <title>Party votes</title>
-    <link rel="stylesheet" href="panel.css?v=0.4.1" />
-    <script src="lume-client.js?v=0.4.1"></script>
-    <script src="votes.js?v=0.4.1"></script>
-    <script src="view.js?v=0.4.1"></script>
+    <link rel="stylesheet" href="panel.css?v=0.4.2" />
+    <script src="lume-client.js?v=0.4.2"></script>
+    <script src="votes.js?v=0.4.2"></script>
+    <script src="view.js?v=0.4.2"></script>
   </head>
   <body>
     <section id="current" hidden></section>
@@ -94,7 +94,7 @@
           const vote = state && state.vote
           const nameOf = namer(state)
           current.replaceChildren(
-            ...(vote ? (vote.status === 'open' ? renderOpen(vote, state, nameOf) : renderResult(vote, nameOf)) : []),
+            ...(vote ? (vote.status === 'open' ? renderOpen(vote, state, nameOf) : renderResult(vote, nameOf)) : []).filter(Boolean),
           )
           current.hidden = !vote
           const open = !!vote && vote.status === 'open'
