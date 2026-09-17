@@ -27,7 +27,7 @@
       <p class="note" id="open-note" hidden>A vote is open. Start another once it ends.</p>
       <p class="error" id="form-error" hidden></p>
       <div class="actions">
-        <button type="submit" class="primary" id="start-button">Start vote</button>
+        <button type="button" class="primary" id="start-button">Start vote</button>
       </div>
     </form>
 
@@ -163,8 +163,10 @@
           host.call('local.set', { key: 'anonymous', value: $('anonymous').checked }).catch(() => {})
         })
 
-        $('start').addEventListener('submit', async (event) => {
-          event.preventDefault()
+        // the frame's sandbox has no allow-forms, so the browser blocks a real
+        // submit before any submit event fires: the button and Enter start it
+        async function startVote() {
+          if ($('start-button').disabled) return
           const input = {
             question: $('question').value,
             options: optionRows().map((field) => field.value),
@@ -182,6 +184,13 @@
             showFormError(err.message || 'The vote didn\'t start.')
           }
           render()
+        }
+
+        $('start-button').addEventListener('click', startVote)
+        $('start').addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' || event.target.tagName !== 'INPUT' || event.target.type !== 'text') return
+          event.preventDefault()
+          startVote()
         })
 
         resetForm()
