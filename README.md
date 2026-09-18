@@ -7,7 +7,9 @@ ends.
 - Anyone starts a vote: a question and 2 to 6 options, with names shown or
   hidden.
 - One vote at a time. Everyone else gets a popup over the board to pick in,
-  and can change their pick in the Party votes panel until the vote ends.
+  with a chime, and can change their pick in the Party votes panel until the
+  vote ends. The chime follows the sound effects volume on Lume's Account
+  page.
 - Results stay hidden until the vote ends; while it's open, only the number
   of people who have voted shows.
 - The person who started a vote ends it, and the DM can end any vote. The
@@ -26,7 +28,7 @@ Until Lume's plugin browser exists, a campaign's DM installs it with a
 |---|---|
 | `plugin_id` | `lume.party-votes` |
 | `manifest_url` | `https://londonbridge411.github.io/lume-party-votes/manifest.json` |
-| `granted` | `["ui:panel", "rpc", "campaign:read", "session:read"]` |
+| `granted` | `["ui:panel", "rpc", "campaign:read", "session:read", "audio"]` |
 
 ## Trust
 
@@ -49,6 +51,7 @@ can put a false name on a vote.
 | `panel.html`, `panel.css` | The panel: start form, open vote, result |
 | `votes.js` | Vote state and the pure functions both frames use |
 | `lume-client.js` | Lume's protocol client, copied until the SDK is published |
+| `chime.wav` | The two-note chime the vote popup opens with |
 
 Static files, no build step. To develop against a local Lume, serve this
 folder with CORS headers (`npx http-server --cors -p 5500`) and point the

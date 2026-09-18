@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <title>Party votes (main)</title>
-    <script src="lume-client.js?v=0.4.2"></script>
-    <script src="votes.js?v=0.4.2"></script>
+    <script src="lume-client.js?v=0.5.0"></script>
+    <script src="votes.js?v=0.5.0"></script>
   </head>
   <body>
     <script>
@@ -25,6 +25,8 @@
 
         const net = (name, args, target) => host.call('rpc.call', { name, args, target: target || 'all' })
         const toast = (text, tone) => host.call('ui.notify', { text: text.slice(0, 280), tone: tone || 'info' }).catch(() => {})
+        // a vote popup is easy to miss on another tab; ignore a device that won't play
+        const chime = () => host.call('audio.play', { url: 'chime.wav', volume: 0.6 }).catch(() => {})
         const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v)
         const nameOf = (playerId) => {
           const member = members.find((m) => m.playerId === playerId)
@@ -51,11 +53,13 @@
 
         // Two popups, one at a time. The vote popup asks this user to pick: it
         // opens once per vote, for a vote someone else started that this user
-        // hasn't picked in yet, and closes when they pick (on any of their
-        // devices) or the vote ends. The result popup opens once when this
-        // device sees a vote end, for everyone, and closes when the next vote
-        // starts. Closed by hand, either stays closed for that vote. On a Lume
-        // without popups, opening fails and a toast says the same thing.
+        // hasn't picked in yet, with a chime, and closes when they pick (on any
+        // of their devices) or the vote ends. The starter and anyone who has
+        // already picked hear nothing. The result popup opens once when this
+        // device sees a vote end, for everyone, silently, and closes when the
+        // next vote starts. Closed by hand, either stays closed for that vote.
+        // On a Lume without popups, opening fails and a toast says the same
+        // thing.
         let votePopupFor = null
         let resultPopupFor = null
         /** the vote this device saw end, not one it learned of already ended */
@@ -66,6 +70,7 @@
             const wanted = vote.starter !== me.playerId && !vote.ballots[me.playerId]
             if (wanted && votePopupFor !== vote.id) {
               votePopupFor = vote.id
+              chime()
               const text = `${nameOf(vote.starter)} started a vote: ${vote.question}`
               openPopup('vote').catch(() => toast(text))
             } else if (!wanted) {
