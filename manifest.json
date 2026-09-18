@@ -1,9 +1,9 @@
 {
   "id": "lume.party-votes",
   "name": "Party votes",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "apiVersion": 1,
-  "kind": "campaign",
+  "type": "campaign",
   "description": "Ask the table a question and see what everyone picks.",
   "main": "main.html",
   "permissions": ["ui:panel", "rpc", "campaign:read", "session:read", "audio"],
@@ -12,7 +12,7 @@
       {
         "id": "votes",
         "url": "panel.html",
-        "kind": "side",
+        "type": "side",
         "view": ["self"],
         "title": "Party votes",
         "icon": "<svg viewBox=\"0 0 24 24\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 13h18v8H3z\"/><path d=\"M7 13V3h10v10\"/><path d=\"M9.5 8l2 2 3.5-4\"/><path d=\"M9 17h6\"/></svg>"
